@@ -35,6 +35,7 @@ import { AuditLedger } from '../audit/AuditLedger.js'
 import { registerAuditLogTool } from '../tools/auditLogTool.js'
 import { registerGetPendingReviewsTool } from '../tools/getPendingReviewsTool.js'
 import { registerSubmitReviewTool } from '../tools/submitReviewTool.js'
+import { registerEndSessionTool } from '../tools/endSessionTool.js'
 
 export interface HiveSession {
   sessionId: string
@@ -441,6 +442,7 @@ export class HttpServer {
     registerAuditLogTool(server, this.agentRegistry, this.auditLedger)
     registerGetPendingReviewsTool(server, this.agentRegistry, this.taskStore)
     registerSubmitReviewTool(server, this.agentRegistry, this.taskStore, this.messageBus, this.auditLedger)
+    registerEndSessionTool(server, this.agentRegistry, this.blackboard)
   }
 
   start(): void {

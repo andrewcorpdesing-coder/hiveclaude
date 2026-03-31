@@ -50,9 +50,11 @@ While **actively working** on a task, call `hive_heartbeat` every 55s to keep fi
 4. hive_update_task_progress   → report start (percent_complete: 0)
 5. Implement the feature       → write code, tests
 6. hive_update_task_progress   → report progress (percent_complete: 50, 80…)
-7. Run tests locally           → verify everything passes
+7. Verify against acceptance_criteria:
+   - Run tests → record output
+   - Build verification evidence (test summary, curl output, etc.)
 8. hive_release_locks          → release ALL file locks
-9. hive_complete_task          → submit with summary + files_modified
+9. hive_complete_task          → submit with summary + files_modified + verification
 10. hive_get_next_task         → claim your next task
     → if no task: hive_wait → process events → repeat from 0
 ```
@@ -150,9 +152,16 @@ hive_complete_task({
   summary: "Implemented X by doing Y. Key decisions: Z.",
   files_modified: ["src/api/users.ts", "src/db/schema.ts"],
   test_results: { passed: 42, failed: 0, coverage: "87%" },
+  verification: {
+    method: "tests",          // "tests" | "manual" | "lint" | "type-check" | "none"
+    passed: true,
+    evidence: "npm test: 42 passed, 0 failed. Coverage 87%. All acceptance criteria covered."
+  },
   notes_for_reviewer: "Pay attention to the retry logic in handleConflict()"
 })
 ```
+
+**Never call `hive_complete_task` without a `verification` field** — the reviewer will reject the task and ask for evidence anyway. If tests don't apply, use `method: "manual"` and describe what you checked.
 
 ---
 

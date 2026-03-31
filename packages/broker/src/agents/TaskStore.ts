@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   notes_for_reviewer  TEXT,
   files_modified      TEXT,
   test_results        TEXT,
+  verification        TEXT,
   completion_summary  TEXT,
   created_by          TEXT NOT NULL,
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
@@ -71,6 +72,7 @@ interface TaskRow {
   notes_for_reviewer: string | null
   files_modified: string | null
   test_results: string | null
+  verification: string | null
   completion_summary: string | null
   created_by: string
   created_at: string
@@ -96,6 +98,7 @@ export interface TaskRecord {
   notesForReviewer: string | null
   filesModified: string[] | null
   testResults: Record<string, unknown> | null
+  verification: { method: string; passed: boolean; evidence: string } | null
   completionSummary: string | null
   createdBy: string
   createdAt: string
@@ -113,6 +116,8 @@ export class TaskStore {
   constructor(db: Database) {
     this.db = db
     this.db.addSchema(TASK_SCHEMA)
+    // Migration: add verification column if upgrading from an older DB
+    try { this.db.exec('ALTER TABLE tasks ADD COLUMN verification TEXT') } catch { /* already exists */ }
   }
 
   create(params: {
@@ -231,6 +236,7 @@ export class TaskStore {
     summary: string
     filesModified?: string[]
     testResults?: Record<string, unknown>
+    verification?: { method: string; passed: boolean; evidence: string }
     notesForReviewer?: string
   }): TaskRecord {
     const now = new Date().toISOString()
@@ -240,6 +246,7 @@ export class TaskStore {
         completion_summary = ?,
         files_modified = ?,
         test_results = ?,
+        verification = ?,
         notes_for_reviewer = ?,
         completed_at = ?,
         last_updated = ?
@@ -248,6 +255,7 @@ export class TaskStore {
       params.summary,
       params.filesModified ? JSON.stringify(params.filesModified) : null,
       params.testResults ? JSON.stringify(params.testResults) : null,
+      params.verification ? JSON.stringify(params.verification) : null,
       params.notesForReviewer ?? null,
       now, now,
       params.taskId,
@@ -355,6 +363,7 @@ export class TaskStore {
       notesForReviewer: row.notes_for_reviewer,
       filesModified: row.files_modified ? JSON.parse(row.files_modified) as string[] : null,
       testResults: row.test_results ? JSON.parse(row.test_results) as Record<string, unknown> : null,
+      verification: row.verification ? JSON.parse(row.verification) as { method: string; passed: boolean; evidence: string } : null,
       completionSummary: row.completion_summary,
       createdBy: row.created_by,
       createdAt: row.created_at,

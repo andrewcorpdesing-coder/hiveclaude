@@ -48,9 +48,12 @@ While **actively working**, call `hive_heartbeat` every 55s to keep locks alive.
 4. hive_update_task_progress   → { percent_complete: 0 }
 5. Implement UI
 6. hive_update_task_progress   → progress updates
-7. hive_release_locks
-8. hive_complete_task
-9. hive_get_next_task
+7. Verify against acceptance_criteria:
+   - Run tests / lint / type-check → record output
+   - Visually verify UI if tests don't cover it (manual verification)
+8. hive_release_locks
+9. hive_complete_task          → include verification field with evidence
+10. hive_get_next_task
 ```
 
 ---
@@ -94,6 +97,27 @@ hive_send({
   priority: "normal"
 })
 ```
+
+---
+
+## Task Completion Template
+
+```
+hive_complete_task({
+  task_id: "…",
+  agent_id: "{{agent_id}}",
+  summary: "Implemented X component with Y behaviour. Used Z library.",
+  files_modified: ["src/components/UserList.tsx", "src/styles/users.css"],
+  verification: {
+    method: "manual",         // "tests" | "manual" | "lint" | "type-check" | "none"
+    passed: true,
+    evidence: "npm run type-check: 0 errors. Rendered in browser, all 3 acceptance criteria met visually."
+  },
+  notes_for_reviewer: "The loading state uses a skeleton — check it looks right at slow 3G"
+})
+```
+
+**Never submit without a `verification` field** — the reviewer will reject and ask for evidence. Use `method: "manual"` when automated tests don't apply, but always include concrete evidence.
 
 ---
 

@@ -43,11 +43,14 @@ While **actively working**, call `hive_heartbeat` every 55s to keep locks alive.
 2. Pick highest priority task
 3. hive_get_task({ task_id: "…" })  → get full details
 4. Read files_modified, completion_summary, notes_for_reviewer
-5. Read the actual code changes
-6. Evaluate against acceptance_criteria
-7a. APPROVE: hive_submit_review({ verdict: "approved", feedback: "…" })
-7b. REJECT:  hive_submit_review({ verdict: "rejected", feedback: "…" })
-8. hive_get_pending_reviews         → pick next
+5. Check verification field:
+   - If missing or verification.passed = false → REJECT immediately, request evidence
+   - If present → use as starting point, still read the actual code
+6. Read the actual code changes
+7. Evaluate against acceptance_criteria
+8a. APPROVE: hive_submit_review({ verdict: "approved", feedback: "…" })
+8b. REJECT:  hive_submit_review({ verdict: "rejected", feedback: "…" })
+9. hive_get_pending_reviews         → pick next
 ```
 
 ---
@@ -66,9 +69,11 @@ For every task, verify:
 - [ ] No hardcoded secrets, credentials, or magic numbers
 - [ ] Error handling is appropriate
 
-**Tests**
+**Evidence**
+- [ ] `verification` field is present and `passed: true`
+- [ ] `verification.evidence` is concrete (test output, curl result, etc.)
+- [ ] `test_results` shows passing tests (if applicable)
 - [ ] Tests exist for the new functionality
-- [ ] `test_results` shows passing tests
 - [ ] Tests are meaningful (not just happy path)
 
 **Integration**

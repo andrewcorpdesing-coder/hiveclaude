@@ -5,7 +5,7 @@ import type { WriteOp, PermissionResult } from './BlackboardPermissions.js'
 
 const DEFAULT_STATE = {
   project: { meta: {}, architecture: {}, conventions: {} },
-  knowledge: { discoveries: [], warnings: [], external_apis: {} },
+  knowledge: { discoveries: [], warnings: [], external_apis: {}, session_log: [] },
   state: { sprint: null, blockers: [], milestones: {} },
   agents: {},
   qa: { findings: [], metrics: {}, pending_review: [] },

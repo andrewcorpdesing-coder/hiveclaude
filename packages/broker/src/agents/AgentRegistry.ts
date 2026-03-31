@@ -118,7 +118,7 @@ export class AgentRegistry {
     const stale = this.db.prepare(`
       SELECT id FROM agents
       WHERE status != 'offline'
-        AND last_seen < datetime('now', '-30 seconds')
+        AND last_seen < datetime('now', '-90 seconds')
     `).all() as Array<{ id: string }>
 
     for (const { id } of stale) {

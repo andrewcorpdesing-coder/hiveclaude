@@ -6,12 +6,25 @@ import type { MessageBus } from '../mcp/MessageBus.js'
 import type { AuditLedger } from '../audit/AuditLedger.js'
 import { toolOk, toolErr } from '../mcp/toolHelpers.js'
 
+const VerificationShape = z.object({
+  method: z.enum(['tests', 'manual', 'lint', 'type-check', 'none']).describe(
+    'How acceptance criteria were verified: tests (ran test suite), manual (checked by hand), lint/type-check (static analysis), none (not verifiable)'
+  ),
+  passed: z.boolean().describe('Whether verification passed'),
+  evidence: z.string().describe(
+    'Concrete evidence: test output summary, curl command result, lint output, or reason why none was possible'
+  ),
+})
+
 const CompleteTaskShape = {
   task_id: z.string().min(1),
   agent_id: z.string().min(1),
   summary: z.string().min(1).describe('What was implemented, decisions taken, files modified'),
   files_modified: z.array(z.string()).optional(),
   test_results: z.record(z.unknown()).optional(),
+  verification: VerificationShape.optional().describe(
+    'Evidence that acceptance criteria were met. Strongly recommended — reviewers will request it if missing.'
+  ),
   notes_for_reviewer: z.string().optional().describe('Context specifically for the QA reviewer'),
 }
 
@@ -21,6 +34,7 @@ type CompleteTaskParams = {
   summary: string
   files_modified?: string[]
   test_results?: Record<string, unknown>
+  verification?: { method: string; passed: boolean; evidence: string }
   notes_for_reviewer?: string
 }
 
@@ -64,6 +78,7 @@ export function registerCompleteTaskTool(
           summary: params.summary,
           filesModified: params.files_modified,
           testResults: params.test_results,
+          verification: params.verification,
           notesForReviewer: params.notes_for_reviewer,
         })
 
