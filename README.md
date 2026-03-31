@@ -71,11 +71,11 @@ hive scaffold
 # 4. Lanzar cada agente en su propio Claude Code
 #    Abre una terminal y navega al directorio del agente:
 cd agents/orchestrator
-claude                  # Claude Code lee CLAUDE.md + .mcp.json automáticamente
+claude                          # usa el modelo por defecto
 
 #    En otra terminal:
 cd agents/coder-backend
-claude
+claude --model claude-sonnet-4-6  # puedes especificar el modelo por rol
 ```
 
 Eso es todo. Los agentes se registran solos en el broker al iniciarse y empiezan a coordinar.
@@ -111,6 +111,33 @@ Eso es todo. Los agentes se registran solos en el broker al iniciarse y empiezan
 
 No necesitas usar todos los roles — arranca con `orchestrator` + 1-2 coders.
 
+### Selección de modelo por rol
+
+Cada agente es un proceso independiente de Claude Code — puedes asignar un modelo distinto a cada uno según su responsabilidad:
+
+```bash
+# Orquestador y arquitecto — decisiones complejas, razonamiento profundo
+claude --model claude-opus-4-6
+
+# Coders — buen balance de capacidad y costo
+claude --model claude-sonnet-4-6
+
+# Reviewer, researcher, devops — tareas más directas
+claude --model claude-haiku-4-5-20251001
+```
+
+| Rol | Modelo sugerido | Por qué |
+|-----|----------------|---------|
+| `orchestrator` | Opus | Planificación, DAG de tareas, decisiones de alto nivel |
+| `architect` | Opus | Diseño de sistemas, trade-offs técnicos complejos |
+| `coder-backend` | Sonnet | Implementación con buen balance calidad/costo |
+| `coder-frontend` | Sonnet | Idem |
+| `reviewer` | Sonnet | Necesita razonamiento pero no tanta profundidad |
+| `researcher` | Haiku | Búsquedas, recopilación de información |
+| `devops` | Haiku | Scripts, configuración, tareas repetitivas |
+
+Esto permite optimizar el costo total del equipo — Opus donde importa la calidad, Haiku para trabajo rutinario.
+
 ---
 
 ## Cómo funciona
@@ -136,7 +163,8 @@ Las herramientas MCP con prefijo `hive_` están disponibles en cada sesión:
 | Herramienta | Descripción |
 |-------------|-------------|
 | `hive_register` | Registrarse en el broker (primera llamada obligatoria) |
-| `hive_heartbeat` | Keep-alive cada 15 s — devuelve eventos pendientes |
+| `hive_wait` | Bloquea hasta que el broker tenga eventos — cero tokens mientras idle |
+| `hive_heartbeat` | Keep-alive de locks durante trabajo activo (cada 55s) |
 | `hive_send` | Enviar mensaje directo a otro agente |
 | `hive_list_agents` | Ver agentes online y su estado |
 | `hive_create_task` | Crear tarea con prioridad, dependencias y rol asignado |
@@ -173,6 +201,18 @@ Antes de editar un archivo, el agente declara qué archivos toca y solicita un l
 
 ### Pipeline de QA
 Las tareas marcadas como `completed` pueden pasar por revisión (`qa_pending`). Un agente reviewer las aprueba (`completed`) o rechaza (`needs_revision`). Si son rechazadas, vuelven al agente original con feedback.
+
+---
+
+## Monitor en tiempo real
+
+Con el broker corriendo, abre en el navegador:
+
+```
+http://localhost:7432/monitor
+```
+
+Dashboard con auto-refresh cada 3 segundos — muestra agentes online, tareas con su estado, pizarra compartida, locks activos y audit log. Sin dependencias, sin instalación adicional.
 
 ---
 
@@ -231,7 +271,7 @@ npm run release            # build + publish @hivemind/broker y @hivemind/cli
 ```bash
 npm install                # instalar dependencias de todos los packages
 npm run build              # compilar broker + cli
-npm test                   # correr todos los tests (123 tests)
+npm test                   # correr todos los tests (123 tests broker + 14 tests CLI)
 npm run dev:broker         # modo watch del broker
 ```
 
