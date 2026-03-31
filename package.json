@@ -1,0 +1,12 @@
+{
+  "name": "hivemind",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces --if-present",
+    "dev:broker": "cd packages/broker && node --watch dist/index.js",
+    "release": "npm run build && npm publish --workspace packages/broker --access public && npm publish --workspace packages/cli --access public",
+    "link:local": "npm run build && npm link --workspace packages/broker && npm link --workspace packages/cli"
+  }
+}

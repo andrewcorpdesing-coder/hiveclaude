@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.js.map
+
+# Hive runtime data
+.hive/
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
