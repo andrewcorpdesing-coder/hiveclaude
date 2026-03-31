@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hive Mind Monitor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+    background: #0d1117;
+    color: #e6edf3;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  #header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+  }
+
+  #header h1 { font-size: 15px; font-weight: 600; color: #f0f6fc; }
+  #header h1 span { color: #f7c948; }
+
+  .badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-green  { background: #1a4731; color: #3fb950; }
+  .badge-red    { background: #3d1a1a; color: #f85149; }
+  .badge-yellow { background: #3d2e00; color: #d29922; }
+
+  #refresh-info { margin-left: auto; color: #8b949e; font-size: 11px; }
+  #countdown { color: #f7c948; font-weight: 600; }
+
+  #error-bar {
+    display: none;
+    padding: 8px 20px;
+    background: #3d1a1a;
+    color: #f85149;
+    font-size: 12px;
+    border-bottom: 1px solid #f85149;
+  }
+
+  /* ── Grid layout ─────────────────────────────────────────── */
+  #grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 1px;
+    background: #30363d;
+    height: calc(100vh - 45px);
+  }
+
+  .panel {
+    background: #0d1117;
+    padding: 14px 16px;
+    overflow: auto;
+  }
+
+  .panel-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-title .count {
+    background: #21262d;
+    color: #8b949e;
+    border-radius: 10px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  /* ── Agents ──────────────────────────────────────────────── */
+  #panel-agents { grid-row: 1 / 3; }
+
+  .agent-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+
+  .agent-name { font-weight: 600; color: #79c0ff; font-size: 12px; }
+  .agent-role { color: #8b949e; font-size: 11px; margin-top: 1px; }
+
+  .agent-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+    font-size: 11px;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-green  { background: #3fb950; box-shadow: 0 0 6px #3fb950; }
+  .dot-yellow { background: #d29922; box-shadow: 0 0 6px #d29922; }
+  .dot-gray   { background: #8b949e; }
+
+  .agent-since { color: #8b949e; font-size: 10px; margin-top: 4px; }
+
+  .empty { color: #8b949e; font-style: italic; font-size: 12px; padding: 8px 0; }
+
+  /* ── Tasks ───────────────────────────────────────────────── */
+  #panel-tasks { grid-column: 2; grid-row: 1; }
+
+  .task-filters { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+
+  .filter-btn {
+    padding: 2px 10px;
+    border-radius: 12px;
+    border: 1px solid #30363d;
+    background: transparent;
+    color: #8b949e;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s;
+  }
+  .filter-btn:hover { border-color: #8b949e; color: #e6edf3; }
+  .filter-btn.active { background: #21262d; color: #f0f6fc; border-color: #8b949e; }
+
+  .task-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    background: #161b22;
+    border: 1px solid #21262d;
+  }
+
+  .task-icon { flex-shrink: 0; margin-top: 1px; }
+
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-weight: 500; color: #e6edf3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .task-meta  { color: #8b949e; font-size: 11px; margin-top: 2px; }
+
+  .task-status {
+    flex-shrink: 0;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .s-pending       { background: #21262d; color: #8b949e; }
+  .s-in_progress   { background: #0d2a40; color: #58a6ff; }
+  .s-qa_pending    { background: #2d1a40; color: #d2a8ff; }
+  .s-completed     { background: #1a3d2b; color: #3fb950; }
+  .s-needs_revision{ background: #3d1a00; color: #ffa657; }
+  .s-blocked       { background: #3d1a1a; color: #f85149; }
+
+  /* ── Blackboard + Locks ──────────────────────────────────── */
+  #panel-bb    { grid-column: 2; grid-row: 2; }
+
+  .bb-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .kv-row { display: flex; gap: 8px; margin-bottom: 4px; }
+  .kv-key { color: #79c0ff; flex-shrink: 0; }
+  .kv-val { color: #e6edf3; word-break: break-all; }
+
+  .lock-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  .lock-agent { color: #ffa657; font-weight: 600; font-size: 11px; }
+  .lock-type  { color: #d2a8ff; font-size: 10px; margin-left: 6px; }
+  .lock-file  { color: #8b949e; font-size: 11px; margin-top: 2px; }
+
+  /* ── Audit ───────────────────────────────────────────────── */
+  #panel-audit { grid-column: 1 / 3; grid-row: 3; max-height: 180px; }
+
+  .audit-row {
+    display: flex;
+    gap: 12px;
+    padding: 4px 0;
+    border-bottom: 1px solid #21262d;
+    font-size: 11px;
+  }
+  .audit-row:last-child { border-bottom: none; }
+
+  .audit-time   { color: #8b949e; flex-shrink: 0; width: 62px; }
+  .audit-agent  { color: #79c0ff; flex-shrink: 0; width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .audit-action { color: #d2a8ff; flex-shrink: 0; width: 160px; }
+  .audit-result-ok     { color: #3fb950; flex-shrink: 0; }
+  .audit-result-denied { color: #f85149; flex-shrink: 0; }
+  .audit-detail { color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1><span>🐝</span> Hive Mind Monitor</h1>
+  <span id="broker-badge" class="badge badge-red">OFFLINE</span>
+  <span id="broker-port" style="color:#8b949e;font-size:11px"></span>
+  <div id="refresh-info">refresh in <span id="countdown">3</span>s</div>
+</div>
+
+<div id="error-bar"></div>
+
+<div id="grid">
+
+  <!-- Agents -->
+  <div class="panel" id="panel-agents">
+    <div class="panel-title">Agents <span class="count" id="agent-count">0</span></div>
+    <div id="agents-list"><div class="empty">No agents connected</div></div>
+  </div>
+
+  <!-- Tasks -->
+  <div class="panel" id="panel-tasks">
+    <div class="panel-title">Tasks <span class="count" id="task-count">0</span></div>
+    <div class="task-filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="pending">Pending</button>
+      <button class="filter-btn" data-filter="in_progress">In Progress</button>
+      <button class="filter-btn" data-filter="qa_pending">QA</button>
+      <button class="filter-btn" data-filter="completed">Completed</button>
+      <button class="filter-btn" data-filter="needs_revision">Revision</button>
+    </div>
+    <div id="tasks-list"><div class="empty">No tasks yet</div></div>
+  </div>
+
+  <!-- Blackboard + Locks -->
+  <div class="panel" id="panel-bb">
+    <div class="bb-grid">
+      <div>
+        <div class="panel-title">Blackboard</div>
+        <div id="bb-list"><div class="empty">Empty</div></div>
+      </div>
+      <div>
+        <div class="panel-title">Active Locks <span class="count" id="lock-count">0</span></div>
+        <div id="locks-list"><div class="empty">No locks</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audit -->
+  <div class="panel" id="panel-audit">
+    <div class="panel-title">Audit Log <span style="color:#8b949e;font-size:10px;font-weight:400;text-transform:none;margin-left:4px">last 15 actions</span></div>
+    <div id="audit-list"><div class="empty">No audit entries</div></div>
+  </div>
+
+</div>
+
+<script>
+const PORT = location.port || 7432
+const BASE = `${location.protocol}//${location.hostname}:${PORT}`
+
+let taskFilter = 'all'
+let allTasks   = []
+let countdown  = 3
+let timer
+
+// ── Filters ────────────────────────────────────────────────
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    taskFilter = btn.dataset.filter
+    renderTasks()
+  })
+})
+
+// ── Fetch helpers ───────────────────────────────────────────
+async function get(path) {
+  const r = await fetch(BASE + path)
+  if (!r.ok) throw new Error(`${r.status} ${path}`)
+  return r.json()
+}
+
+// ── Main refresh ────────────────────────────────────────────
+async function refresh() {
+  clearInterval(timer)
+  countdown = 3
+
+  try {
+    const [ping, agents, tasks, bb, locks, audit] = await Promise.all([
+      get('/ping'),
+      get('/admin/agents'),
+      get('/admin/tasks'),
+      get('/admin/blackboard'),
+      get('/admin/locks'),
+      get('/admin/audit?limit=15'),
+    ])
+
+    document.getElementById('error-bar').style.display = 'none'
+    setBrokerStatus(true, ping)
+    renderAgents(agents.agents ?? [])
+    allTasks = tasks.tasks ?? []
+    document.getElementById('task-count').textContent = allTasks.length
+    renderTasks()
+    renderBlackboard(bb.blackboard ?? {})
+    renderLocks(locks.active ?? [], locks.queued ?? [])
+    renderAudit(audit.entries ?? [])
+
+  } catch (e) {
+    setBrokerStatus(false)
+    const bar = document.getElementById('error-bar')
+    bar.style.display = 'block'
+    bar.textContent = `⚠ Broker unreachable — ${e.message}`
+  }
+
+  startCountdown()
+}
+
+function startCountdown() {
+  timer = setInterval(() => {
+    countdown--
+    document.getElementById('countdown').textContent = countdown
+    if (countdown <= 0) {
+      clearInterval(timer)
+      refresh()
+    }
+  }, 1000)
+}
+
+// ── Broker status ───────────────────────────────────────────
+function setBrokerStatus(online, ping) {
+  const badge = document.getElementById('broker-badge')
+  const port  = document.getElementById('broker-port')
+  if (online) {
+    badge.className = 'badge badge-green'
+    badge.textContent = 'ONLINE'
+    port.textContent  = `v${ping.version} · :${PORT} · ${ping.agents_online} agents`
+  } else {
+    badge.className = 'badge badge-red'
+    badge.textContent = 'OFFLINE'
+    port.textContent  = ''
+  }
+}
+
+// ── Agents ──────────────────────────────────────────────────
+function renderAgents(agents) {
+  document.getElementById('agent-count').textContent = agents.length
+  const el = document.getElementById('agents-list')
+  if (!agents.length) { el.innerHTML = '<div class="empty">No agents connected</div>'; return }
+
+  el.innerHTML = agents.map(a => {
+    const statusColor = a.status === 'busy' ? 'yellow' : a.status === 'idle' ? 'green' : 'gray'
+    const since = a.connectedAt ? timeAgo(a.connectedAt) : ''
+    return `
+      <div class="agent-card">
+        <div class="agent-name">${esc(a.id)}</div>
+        <div class="agent-role">${esc(a.role)}</div>
+        <div class="agent-status">
+          <span class="dot dot-${statusColor}"></span>
+          <span style="color:#e6edf3">${a.status ?? 'unknown'}</span>
+        </div>
+        ${since ? `<div class="agent-since">since ${since}</div>` : ''}
+      </div>`
+  }).join('')
+}
+
+// ── Tasks ───────────────────────────────────────────────────
+function renderTasks() {
+  const filtered = taskFilter === 'all' ? allTasks : allTasks.filter(t => t.status === taskFilter)
+  const el = document.getElementById('tasks-list')
+  if (!filtered.length) { el.innerHTML = '<div class="empty">No tasks</div>'; return }
+
+  el.innerHTML = filtered.map(t => {
+    const icon = statusIcon(t.status)
+    const assigned = t.assignedTo ? `→ ${t.assignedTo}` : `[${t.role}]`
+    const dep = t.dependsOn?.length ? ` · deps: ${t.dependsOn.length}` : ''
+    return `
+      <div class="task-row">
+        <div class="task-icon">${icon}</div>
+        <div class="task-body">
+          <div class="task-title" title="${esc(t.title)}">${esc(t.title)}</div>
+          <div class="task-meta">${esc(assigned)}${dep} · p${t.priority ?? 5}</div>
+        </div>
+        <div class="task-status s-${t.status}">${t.status}</div>
+      </div>`
+  }).join('')
+}
+
+function statusIcon(s) {
+  const icons = {
+    pending: '<span style="color:#8b949e">○</span>',
+    in_progress: '<span style="color:#58a6ff">⟳</span>',
+    qa_pending: '<span style="color:#d2a8ff">◎</span>',
+    completed: '<span style="color:#3fb950">✔</span>',
+    needs_revision: '<span style="color:#ffa657">↺</span>',
+    blocked: '<span style="color:#f85149">✖</span>',
+  }
+  return icons[s] ?? '○'
+}
+
+// ── Blackboard ──────────────────────────────────────────────
+function renderBlackboard(bb) {
+  const el = document.getElementById('bb-list')
+  const flat = flattenObj(bb, '', 3)
+  const keys = Object.keys(flat)
+  if (!keys.length) { el.innerHTML = '<div class="empty">Empty</div>'; return }
+
+  el.innerHTML = keys.slice(0, 20).map(k => {
+    const v = flat[k]
+    const display = typeof v === 'object' ? JSON.stringify(v) : String(v)
+    return `<div class="kv-row">
+      <span class="kv-key">${esc(k)}</span>
+      <span class="kv-val">${esc(display.slice(0, 60))}</span>
+    </div>`
+  }).join('')
+}
+
+function flattenObj(obj, prefix, depth) {
+  if (depth === 0 || typeof obj !== 'object' || obj === null) return { [prefix]: obj }
+  const out = {}
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k
+    if (typeof v === 'object' && v !== null && !Array.isArray(v) && depth > 1) {
+      Object.assign(out, flattenObj(v, key, depth - 1))
+    } else {
+      out[key] = v
+    }
+  }
+  return out
+}
+
+// ── Locks ───────────────────────────────────────────────────
+function renderLocks(active, queued) {
+  document.getElementById('lock-count').textContent = active.length + queued.length
+  const el = document.getElementById('locks-list')
+  const all = [
+    ...active.map(l => ({ ...l, _q: false })),
+    ...queued.map(l => ({ ...l, _q: true })),
+  ]
+  if (!all.length) { el.innerHTML = '<div class="empty">No locks</div>'; return }
+
+  el.innerHTML = all.map(l => `
+    <div class="lock-card">
+      <div>
+        <span class="lock-agent">${esc(l.agentId ?? l.requesterId ?? '?')}</span>
+        <span class="lock-type">${l.type ?? ''} ${l._q ? '(queued)' : ''}</span>
+      </div>
+      <div class="lock-file">${(l.files ?? l.paths ?? []).map(f => esc(f)).join(', ')}</div>
+    </div>`).join('')
+}
+
+// ── Audit ───────────────────────────────────────────────────
+function renderAudit(entries) {
+  const el = document.getElementById('audit-list')
+  if (!entries.length) { el.innerHTML = '<div class="empty">No audit entries</div>'; return }
+
+  el.innerHTML = entries.slice().reverse().map(e => {
+    const t = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : ''
+    const detail = e.detail ? JSON.stringify(e.detail).slice(0, 80) : ''
+    const resClass = e.result === 'ok' ? 'audit-result-ok' : 'audit-result-denied'
+    return `
+      <div class="audit-row">
+        <span class="audit-time">${t}</span>
+        <span class="audit-agent">${esc(e.agentId ?? '')}</span>
+        <span class="audit-action">${esc(e.action ?? '')}</span>
+        <span class="${resClass}">${e.result === 'ok' ? '✔' : '✖'}</span>
+        <span class="audit-detail">${esc(detail)}</span>
+      </div>`
+  }).join('')
+}
+
+// ── Utils ───────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000)
+  if (s < 60)   return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s/60)}m ago`
+  return `${Math.floor(s/3600)}h ago`
+}
+
+// ── Boot ────────────────────────────────────────────────────
+refresh()
+</script>
+</body>
+</html>

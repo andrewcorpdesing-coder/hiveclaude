@@ -1,5 +1,10 @@
 import http from 'node:http'
+import fs from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -137,6 +142,14 @@ export class HttpServer {
     res: http.ServerResponse,
   ): Promise<void> {
     const url = new URL(req.url ?? '/', `http://localhost:${this.port}`)
+
+    // ── Monitor UI ─────────────────────────────────────────────────────────
+    if (req.method === 'GET' && url.pathname === '/monitor') {
+      const html = fs.readFileSync(resolve(__dirname, '../monitor.html'), 'utf8')
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.end(html)
+      return
+    }
 
     // ── Health check ───────────────────────────────────────────────────────
     if (req.method === 'GET' && url.pathname === '/ping') {

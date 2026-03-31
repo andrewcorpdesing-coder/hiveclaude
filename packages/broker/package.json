@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "files": ["dist"],
   "scripts": {
-    "build": "tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/prompts',{recursive:true});fs.readdirSync('src/prompts').filter(f=>f.endsWith('.md')).forEach(f=>fs.copyFileSync('src/prompts/'+f,'dist/prompts/'+f))\"",
+    "build": "tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/prompts',{recursive:true});fs.readdirSync('src/prompts').filter(f=>f.endsWith('.md')).forEach(f=>fs.copyFileSync('src/prompts/'+f,'dist/prompts/'+f));fs.copyFileSync('src/monitor.html','dist/monitor.html')\"",
     "start": "node dist/index.js",
     "test": "node --test dist/tests/**/*.test.js"
   },
