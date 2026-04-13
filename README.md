@@ -219,7 +219,7 @@ hiveclaude exec --launch orchestrator coder-backend reviewer           # abre to
 hiveclaude exec --launch --yolo orchestrator coder-backend reviewer    # sin prompts de permisos
 ```
 
-`--launch` abre **una sola ventana** de Windows Terminal con cada agente en su propio tab — no ventanas separadas. En macOS abre tabs en Terminal.app. En Linux abre una ventana por agente como fallback.
+`--launch` abre **una sola ventana** de Windows Terminal con cada agente en su propio panel dividido (`split-pane -H`). En macOS abre tabs en Terminal.app. En Linux abre una ventana por agente como fallback.
 
 | Rol | Modelo sugerido | Por qué |
 |-----|----------------|---------|

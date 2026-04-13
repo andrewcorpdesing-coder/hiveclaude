@@ -139,9 +139,9 @@ function tryLaunchAll(
 }
 
 /**
- * Windows Terminal: builds a single `wt` compound command.
- *   wt -d <dir1> --title <role1> cmd /k <cmd1> ; new-tab -d <dir2> --title <role2> cmd /k <cmd2> ...
- * All agents open as tabs in one WT window.
+ * Windows Terminal: builds a single `wt` compound command with split panes.
+ *   wt -d <dir1> --title <role1> cmd /k <cmd1> ; split-pane -H -d <dir2> --title <role2> cmd /k <cmd2> ...
+ * All agents share one WT window, each in its own horizontal pane.
  */
 function launchWindowsTerminal(
   targets: Array<{ role: string; model: string }>,
@@ -154,7 +154,7 @@ function launchWindowsTerminal(
     const { role, model } = targets[i]
     const agentDir = resolve(cwd, 'agents', role)
     const claudeCmd = `claude --model ${model}${skipPerms}${autoStart}`
-    if (i > 0) wtArgs.push(';', 'new-tab')
+    if (i > 0) wtArgs.push(';', 'split-pane', '-H')
     wtArgs.push('-d', agentDir, '--title', role, 'cmd', '/k', claudeCmd)
   }
   try {
