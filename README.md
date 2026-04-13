@@ -56,7 +56,7 @@ Mientras coder-backend implementa la API, coder-frontend ya construye los compon
 
 ## ⚠️ Aviso
 
-- **Alpha:** v0.1 — úsalo en proyectos de prueba, no en producción crítica aún
+- **Beta:** v0.6 — coordinación adaptativa completa + QA verificación activa + self-review imposible. Tests estables. Úsalo en proyectos reales con precaución.
 - **Costo:** cada agente consume tokens de forma independiente — 4 agentes activos equivale a 4x el consumo normal de Claude Code
 - **Permisos:** el flag `--yolo` elimina las confirmaciones de Claude Code — revisa bien el plan antes de aprobarlo
 
@@ -257,7 +257,7 @@ Claude Code lo detecta automáticamente al abrir ese directorio.
 | `hive_heartbeat` | Workers | Keep-alive de locks durante trabajo activo (cada 55s) |
 | `hive_send` | Todos | Mensaje directo a otro agente o broadcast |
 | `hive_list_agents` | Todos | Ver agentes online y su estado |
-| `hive_create_task` | Orchestrator | Crear tarea con prioridad, dependencias y rol asignado |
+| `hive_create_task` | Orchestrator | Crear tarea con prioridad, dependencias y rol asignado. `estimated_duration_minutes` alimenta el scheduler CPM (default: 60 min) |
 | `hive_get_next_task` | Workers | Obtener la siguiente tarea disponible (no disponible para reviewer) |
 | `hive_update_task_progress` | Workers | Reportar progreso en una tarea |
 | `hive_complete_task` | Workers | Marcar tarea como completa con evidencia de verificación |
@@ -271,6 +271,9 @@ Claude Code lo detecta automáticamente al abrir ese directorio.
 | `hive_get_pending_reviews` | Reviewer | Ver tareas esperando revisión QA |
 | `hive_submit_review` | Reviewer | Aprobar o rechazar con feedback específico |
 | `hive_merge_branch` | Orchestrator | Mergear rama `hive/<rol>` a main tras QA |
+| `hive_add_dependency` | Orchestrator | Añadir dependencia entre dos tareas existentes (detección de ciclos) |
+| `hive_auto_plan` | Orchestrator | Persistir plan + auto-aprobar si risk=low (proyecto conocido + modo flowing) |
+| `hive_verify_task` | Reviewer | Ejecutar checks automáticos antes de aprobar: tsc, file_exists, exec, http shape validation |
 | `hive_end_session` | Todos | Guardar resumen de sesión antes de parar |
 | `hive_audit_log` | Todos | Consultar registro de auditoría |
 
@@ -293,7 +296,7 @@ Claude Code lo detecta automáticamente al abrir ese directorio.
 
 ### Pizarra compartida (Blackboard)
 
-Estado JSON compartido persistido en `.hive/blackboard.json`. Estructura:
+Estado compartido persistido en SQLite (`.hive/tasks.db`, tabla `blackboard`) con dual-write a `.hive/blackboard.json` para compatibilidad. Estructura:
 
 ```
 project.meta            — metadatos del proyecto
@@ -320,7 +323,9 @@ Antes de editar un archivo, el agente declara qué archivos toca. Si otro agente
 
 ### Pipeline de QA
 
-Las tareas completadas por workers pasan a `qa_pending`. El reviewer las inspecciona con `hive_get_pending_reviews` y aprueba o rechaza con `hive_submit_review`. Al aprobar:
+Las tareas completadas por workers pasan a `qa_pending`. El reviewer las inspecciona con `hive_get_pending_reviews` y antes de aprobar o rechazar ejecuta `hive_verify_task` — checks automáticos (tsc, file_exists, http shape validation, exec) que convierten el review de razonamiento en verificación determinista.
+
+Al aprobar:
 
 - La tarea pasa a `completed`
 - El broker desbloquea automáticamente las tareas dependientes
@@ -328,6 +333,8 @@ Las tareas completadas por workers pasan a `qa_pending`. El reviewer las inspecc
 - Si todas las tareas están completadas, el broker emite `sprint_complete` a todos los agentes
 
 Si son rechazadas, vuelven al agente original (`needs_revision`) con feedback específico y accionable.
+
+**Self-review imposible:** el broker rechaza con `SELF_REVIEW_FORBIDDEN` cualquier intento de un agente de aprobar su propia tarea — independientemente del prompt. Un agente que actúa solo nunca puede completar el ciclo completo.
 
 El orquestador **nunca crea tareas con `assigned_role: reviewer`**. El reviewer solo opera a través del pipeline QA, no como worker normal.
 
@@ -369,6 +376,80 @@ Al arrancar la próxima sesión, el orquestador lee `knowledge.session_log` y re
 
 ---
 
+## Coordinación adaptativa (v0.2–v0.5)
+
+El broker no es solo un router — es un coordinador activo que aprende y actúa.
+
+### Thompson Sampling — routing por calidad con decay temporal (v0.3)
+
+`hive_get_next_task` no devuelve tareas en orden FIFO. Usa Thompson Sampling Beta(α,β) combinado con decay temporal para priorizar la siguiente tarea:
+
+```
+composite = θ×0.5 + decayScore×timeFactor×0.5
+timeFactor = 0.2 + 0.8×e^(-age/τ)
+```
+
+τ varía por tipo de tarea: bugfix=12h (urgente), feature=48h, architecture=72h. Tareas antiguas salen de la cola antes de que expiren sus ventanas de relevancia. El historial persiste en `.hive/tasks.db`.
+
+### HeterosynapticCapture — propagación de señales de calidad (v0.2–v0.3)
+
+Cuando el reviewer rechaza con `severity: "critical"`, la señal se propaga hacia adelante:
+
+- La tarea rechazada recibe `quality_floor = 0.85` (Tier 1)
+- Todas las tareas pendientes que tocan los mismos archivos reciben `quality_floor = 0.70` (Tier 2)
+- El floor **decae** con cada aprobación: `floor × e^(-1/5)` — ~5 aprobaciones para reducirlo a la mitad
+
+Esto significa que un error crítico eleva el estándar para ese módulo sin intervención manual, y que la señal de error desaparece orgánicamente si el módulo luego funciona bien.
+
+### DAG de dependencias + Critical Path Method (v0.4–v0.6)
+
+Las dependencias entre tareas son un grafo real persistido en SQLite. `hive_add_dependency` añade aristas con detección de ciclos (Kahn's BFS). El broker ejecuta CPM (ES/EF/LS/LF, Float=0 = crítico) en dos lugares:
+
+- **Scheduler** (`getNextAvailable`): ordena tareas disponibles por `is_critical_path DESC, float_minutes ASC` — las tareas en la ruta crítica salen primero de la cola, reduciendo makespan. El campo `estimated_duration_minutes` en `hive_create_task` alimenta este cálculo (default: 60 min). CPM se recalcula automáticamente al crear tareas y al aprobar revisiones.
+- **FEP health probe** (`critical_path_health`): solo alerta cuando tareas en estado `blocked` tienen Float≈0. Bloqueos fuera de la ruta crítica no degradan el probe.
+
+### HiveCriticalityEngine — κ (salud sistémica)
+
+El broker mide κ ∈ [0,1] sobre 3 probes (routing entropy, completion variance, review score variance). κ indica si el equipo está en la zona óptima de coordinación (borde del caos, κ ∈ [0.40, 0.60]) o drifteando hacia rigidez o caos.
+
+Disponible en `GET /admin/health`. El monitor lo muestra en tiempo real.
+
+### FreeEnergyCoordinator — F con loop de aprendizaje (v0.2–v0.3)
+
+El coordinator calcula F = Σwᵢ·Uᵢ sobre 6 probes cada N minutos (adaptativo según modo):
+
+| Probe | Peso | Qué mide |
+|-------|------|----------|
+| critical_path_health | 0.30 | Tareas bloqueadas en ruta crítica (CPM) |
+| agent_quality_trend | 0.20 | Tasa de rechazo de los últimos 10 reviews |
+| lock_contention | 0.15 | Locks en cola / locks activos |
+| estimate_deviation | 0.15 | Tareas que tardan >2× su estimado |
+| context_budget_health | 0.12 | Agentes con tareas >2h en curso |
+| human_feedback_latency | 0.08 | Tiempo esperando aprobación humana |
+
+Cada intervención queda registrada en `coordinator_interventions` (SQLite). El F real 30 minutos después retroalimenta si la intervención funcionó. Con ≥30 outcomes, `calibrateWeights()` ajusta los pesos por gradient descent — los probes que más reducen F reciben más peso.
+
+Cuando F ≥ 0.55 el coordinator envía eventos a los agentes relevantes. Cuando F ≥ 0.80 envía `coordinator_critical_alert` a todos y el orquestador detiene nuevas asignaciones.
+
+### Verificación activa del reviewer — hive_verify_task (v0.6)
+
+El reviewer no es solo un agente de razonamiento — tiene acceso a `hive_verify_task` para ejecutar checks concretos antes de aprobar cualquier tarea:
+
+| Tipo de check | Qué verifica |
+|---|---|
+| `tsc` | TypeScript compila sin errores en el directorio del proyecto |
+| `file_exists` | El archivo fue realmente creado en la ruta esperada |
+| `exec` | Un comando termina con el exit code esperado |
+| `http` | Un endpoint devuelve el shape de respuesta correcto (BFS deep search: si `kappa` no está en la raíz, lo busca en `criticality.kappa` y reporta exactamente dónde está y dónde debería estar) |
+
+Esto cierra el gap entre "el código razonablemente parece correcto" y "el código funciona". Los bugs de contrato de API — que pasan `tsc --noEmit` pero fallan en runtime por shape mismatches — son detectables directamente.
+
+### Auto-ejecución del orquestador (v0.5)
+
+Cuando el proyecto tiene historial, el sistema está en modo `flowing` (F < 0.30), y el objetivo es de bajo riesgo (más archivos nuevos que modificados, sin tareas de arquitectura, < 4h estimado), el orquestador puede llamar `hive_auto_plan` con `risk="low"` y recibir `auto_approved=true` — crea las tareas sin esperar aprobación humana.
+
+---
+
 ## Monitor en tiempo real
 
 Con el broker corriendo, abre en el navegador:
@@ -377,7 +458,18 @@ Con el broker corriendo, abre en el navegador:
 http://localhost:7432/monitor
 ```
 
-Dashboard con auto-refresh cada 3 segundos — muestra agentes online, tareas con su estado, pizarra compartida, locks activos y audit log. Sin dependencias, sin instalación adicional.
+Dashboard con auto-refresh cada 3 segundos.
+
+**Franja de coordinación (parte superior):**
+
+| Panel | Qué leer |
+|-------|----------|
+| **Criticality κ** | Zona actual (rigid / sub_critical / **optimal** / super_critical / chaotic) + trend (↑ rising / → stable / ↓ falling) + 3 probe bars |
+| **Free Energy F** | Modo actual (flowing / monitoring / active / **critical**) + 6 probe bars con contribuciones + tiempo del último tick |
+
+Los colores son intuitivos: verde = bien, amarillo = atención, naranja = problemas, rojo = crítico.
+
+**Tareas:** el badge `floor 0.85` aparece en cualquier tarea con quality_floor elevado — visible de un vistazo cuáles están marcadas por rechazos críticos anteriores.
 
 ---
 
@@ -400,6 +492,10 @@ POST /admin/input                         — encolar tarea para el orquestador 
 GET  /admin/plan                          — plan actual del orquestador
 POST /admin/plan/approve                  — aprobar plan (usado por hiveclaude approve)
 POST /admin/plan/reject                   — rechazar plan con feedback (usado por hive reject)
+GET  /admin/health                              — CriticalityReport: κ, zona, trend, 3 probes (persiste snapshot)
+GET  /admin/health/history[?limit=N]            — histórico de snapshots de κ + calibración PCA si ≥30
+GET  /admin/coordinator                         — FepReport: F, modo, 6 probes (dispara tick, actualiza blackboard)
+GET  /admin/coordinator/interventions[?limit=N] — historial de intervenciones + calibración si ≥30 outcomes
 ```
 
 ---
